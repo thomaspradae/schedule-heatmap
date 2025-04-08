@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Interactive Schedule Heatmap</title>
   <style>
     /* Global styling */
@@ -73,7 +73,6 @@
     /* Event blocks */
     .event-block {
       position: absolute;
-      background: linear-gradient(145deg, #007aff, #00d4ff);
       border: 1px solid #005bb5;
       border-radius: 4px;
       color: #fff;
@@ -82,11 +81,20 @@
       box-sizing: border-box;
       overflow: hidden;
       font-size: 0.75em;
-      opacity: 0.92;
+      opacity: 0.8; /* slightly transparent */
       transition: transform 0.1s;
     }
     .event-block:hover {
       box-shadow: 0 4px 6px rgba(0,0,0,0.4);
+    }
+    /* Distinguish color schemes for Ana & Thomas */
+    .ana-block {
+      background: rgba(0, 122, 255, 0.7); /* translucent blue */
+      border-color: #0060aa;
+    }
+    .thomas-block {
+      background: rgba(255, 165, 0, 0.7); /* translucent orange */
+      border-color: #cc6600;
     }
     /* Summary styling */
     #summary {
@@ -128,16 +136,19 @@
   <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
   
   <script>
-    // Config constants
-    const cellWidth = 150;      // width per day column
-    const cellHeight = 30;      // height per half-hour row
-    const baseHour = 4;         // starting hour (04:00)
-    const numRows = 38;         // rows from 04:00 to 22:30
+    // ==============================
+    //  CONFIG & CONSTANTS
+    // ==============================
+    const cellWidth = 150;
+    const cellHeight = 30;
+    const baseHour = 4;   // 04:00
+    const numRows = 38;   // 04:00 to 22:30 in half-hour increments
     const days = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
 
-    // Setup header and time column on page load
+    // ==============================
+    //  INIT: HEADERS & TIME COLUMN
+    // ==============================
     function renderHeaders() {
-      // Render day header
       const dayHeader = document.getElementById("dayHeader");
       dayHeader.innerHTML = "";
       days.forEach(day => {
@@ -145,7 +156,7 @@
         div.textContent = day;
         dayHeader.appendChild(div);
       });
-      // Render time column
+
       const timeColumn = document.getElementById("timeColumn");
       timeColumn.innerHTML = "";
       for (let i = 0; i < numRows; i++) {
@@ -154,53 +165,55 @@
         timeColumn.appendChild(div);
       }
     }
-
     renderHeaders();
 
-    // Event listeners for load button
+    // ==============================
+    //  LOADING & PARSING CSV
+    // ==============================
     document.getElementById('loadSchedule').addEventListener('click', () => {
       const file = document.getElementById('scheduleSelect').value;
       if (file === "overlay") {
+        // Load both and overlay them
         Promise.all([loadCSV("ana_schedule.csv"), loadCSV("thomas_schedule.csv")])
           .then(results => {
-            const merged = mergeScheduleMatrices(results[0], results[1]);
-            renderSchedule(merged);
-            renderSummary(merged);
+            // We'll render them side by side in the same container
+            // with partial transparency for each person's schedule
+            const ana = results[0];
+            const thomas = results[1];
+            renderOverlaySchedules(ana, thomas);
+            renderSummaryOverlay(ana, thomas);
           })
-          .catch(err => console.error("Error loading CSVs for overlay:", err));
+          .catch(err => console.error("Overlay error:", err));
       } else {
         loadScheduleCSV(file);
       }
     });
 
-    // Load CSV via PapaParse and return a Promise with a schedule matrix (object with keys per day)
     function loadCSV(filePath) {
       return new Promise((resolve, reject) => {
         Papa.parse(filePath, {
           download: true,
-          complete: function(results) {
+          complete: (results) => {
             const data = results.data;
             if (Array.isArray(data) && Array.isArray(data[0])) {
               let header = data[0];
               let scheduleMatrix = {};
               for (let i = 1; i < data.length; i++) {
                 let row = data[i];
-                let time = row[0];
+                const time = row[0] || "";
                 for (let j = 1; j < header.length; j++) {
                   let day = header[j];
                   if (!scheduleMatrix[day]) scheduleMatrix[day] = [];
                   scheduleMatrix[day].push({ time: time, label: row[j] || "" });
                 }
               }
-              console.log("Loaded", filePath, scheduleMatrix);
+              console.log("Loaded:", filePath, scheduleMatrix);
               resolve(scheduleMatrix);
             } else {
               reject("Unexpected CSV format in " + filePath);
             }
           },
-          error: function(err) {
-            reject(err);
-          }
+          error: (err) => reject(err)
         });
       });
     }
@@ -208,64 +221,87 @@
     function loadScheduleCSV(filePath) {
       loadCSV(filePath)
         .then(matrix => {
-          renderSchedule(matrix);
+          // single-schedule scenario
+          renderSingleSchedule(matrix, filePath.includes("ana") ? "ana" : "thomas");
           renderSummary(matrix);
         })
         .catch(err => console.error(err));
     }
-    
-    // Merge two schedule matrices (safely handling missing labels)
-    function mergeScheduleMatrices(m1, m2) {
-      let merged = {};
-      days.forEach(day => {
-        const arr1 = m1[day] || [];
-        const arr2 = m2[day] || [];
-        let mergedDay = [];
-        const maxLen = Math.max(arr1.length, arr2.length);
-        for (let i = 0; i < maxLen; i++) {
-          const label1 = arr1[i] && arr1[i].label ? arr1[i].label : "Freespace";
-          const label2 = arr2[i] && arr2[i].label ? arr2[i].label : "Freespace";
-          let l1 = (label1 || "").trim();
-          let l2 = (label2 || "").trim();
-          let mergedLabel = "";
-          if ((l1 === "" || l1 === "Freespace") && l2 !== "" && l2 !== "Freespace") {
-            mergedLabel = l2;
-          } else if ((l2 === "" || l2 === "Freespace") && l1 !== "" && l1 !== "Freespace") {
-            mergedLabel = l1;
-          } else if (l1 !== "" && l2 !== "") {
-            mergedLabel = l1 + " + " + l2;
-          } else {
-            mergedLabel = "Freespace";
-          }
-          // Use time from arr1 if available, else arr2, else default based on row index
-          let t = (arr1[i] && arr1[i].time) ? arr1[i].time : ((arr2[i] && arr2[i].time) ? arr2[i].time : indexToTime(i));
-          mergedDay.push({ time: t, label: mergedLabel });
-        }
-        merged[day] = mergedDay;
+
+    // ==============================
+    //  OVERLAY SCHEDULES
+    // ==============================
+    function renderOverlaySchedules(anaMatrix, thomasMatrix) {
+      // Clear container, draw grid lines
+      initGrid();
+      // Render Ana's blocks in partial-blue
+      renderOneSchedule(anaMatrix, "ana");
+      // Render Thomas's blocks in partial-orange
+      renderOneSchedule(thomasMatrix, "thomas");
+      enableDraggingAndResizing();
+    }
+
+    // ==============================
+    //  SINGLE SCHEDULE
+    // ==============================
+    function renderSingleSchedule(scheduleMatrix, userTag) {
+      initGrid();
+      renderOneSchedule(scheduleMatrix, userTag);
+      enableDraggingAndResizing();
+    }
+
+    // ==============================
+    //  SHARED RENDERING
+    // ==============================
+    function initGrid() {
+      const container = document.getElementById("scheduleContainer");
+      container.innerHTML = "";
+      // Horizontal lines
+      for (let i = 0; i <= numRows; i++) {
+        let hLine = document.createElement("div");
+        hLine.className = "grid-line";
+        hLine.style.top = (i * cellHeight) + "px";
+        hLine.style.left = "0px";
+        hLine.style.width = (cellWidth * days.length) + "px";
+        hLine.style.height = "1px";
+        container.appendChild(hLine);
+      }
+      // Vertical lines
+      for (let j = 0; j <= days.length; j++) {
+        let vLine = document.createElement("div");
+        vLine.className = "grid-line";
+        vLine.style.left = (j * cellWidth) + "px";
+        vLine.style.top = "0px";
+        vLine.style.height = (numRows * cellHeight) + "px";
+        vLine.style.width = "1px";
+        container.appendChild(vLine);
+      }
+    }
+
+    function renderOneSchedule(scheduleMatrix, userTag) {
+      const container = document.getElementById("scheduleContainer");
+      days.forEach((day, dayIndex) => {
+        const dayData = scheduleMatrix[day] || [];
+        // Group contiguous blocks
+        let events = groupDayEvents(dayData);
+        if (events.length === 0) return;
+        // Assign overlap levels
+        const { events: finalEvents, maxLevel } = assignLevels(events);
+        // Render blocks
+        finalEvents.forEach(ev => {
+          const block = buildEventBlock(ev, userTag, dayIndex, maxLevel);
+          container.appendChild(block);
+        });
       });
-      console.log("Merged schedule:", merged);
-      return merged;
     }
-    
-    // Helpers to convert times to/from grid row index
-    function timeToIndex(timeStr) {
-      let [hours, minutes] = timeStr.split(":").map(Number);
-      return ((hours - baseHour) * 60 + minutes) / 30;
-    }
-    function indexToTime(idx) {
-      let totalMins = idx * 30 + baseHour * 60;
-      let hrs = Math.floor(totalMins / 60);
-      let mins = totalMins % 60;
-      return (hrs < 10 ? "0" : "") + hrs + ":" + (mins < 10 ? "0" : "") + mins;
-    }
-    
-    // Group contiguous cells (per day) into event blocks.
+
+    // Group contiguous half-hour segments with the same label
     function groupDayEvents(dayData) {
       let events = [];
       dayData.forEach((entry, i) => {
-        if (!entry || !entry.label || entry.label.trim() === "" || entry.label === "Freespace") return;
-        let parts = entry.label.split(" + ");
-        parts.forEach(lbl => {
+        if (!entry || !entry.label.trim() || entry.label.trim() === "Freespace") return;
+        let labels = entry.label.split(" + ");
+        labels.forEach(lbl => {
           lbl = lbl.trim();
           if (!lbl) return;
           let last = events.length ? events[events.length - 1] : null;
@@ -278,101 +314,72 @@
       });
       return events;
     }
-    
-    // Calculate levels for overlapping events so they appear side-by-side.
+
+    // If events overlap in time, bump their "level" so they appear side by side
     function assignLevels(events) {
-      events.sort((a, b) => a.startIdx - b.startIdx);
+      events.sort((a,b) => a.startIdx - b.startIdx);
       events.forEach(ev => {
         let level = 0;
-        while(events.some(other => other !== ev &&
-              other.level === level &&
-              other.startIdx < ev.endIdx &&
-              other.endIdx > ev.startIdx)) {
+        while(events.some(o => o !== ev && o.level === level &&
+          o.startIdx < ev.endIdx && o.endIdx > ev.startIdx)) {
           level++;
         }
         ev.level = level;
       });
-      let maxLevel = events.reduce((max, ev) => Math.max(max, ev.level), 0);
+      let maxLevel = events.reduce((m, ev) => Math.max(m, ev.level), 0);
       return { events, maxLevel };
     }
-    
-    // Render the schedule grid and event blocks.
-    function renderSchedule(scheduleMatrix) {
-      console.log("Rendering schedule:", scheduleMatrix);
-      const container = document.getElementById("scheduleContainer");
-      container.innerHTML = "";  // clear previous
-      
-      // Draw horizontal grid lines
-      for (let i = 0; i <= numRows; i++) {
-        let hLine = document.createElement("div");
-        hLine.className = "grid-line";
-        hLine.style.top = (i * cellHeight) + "px";
-        hLine.style.left = "0px";
-        hLine.style.width = (cellWidth * days.length) + "px";
-        hLine.style.height = "1px";
-        container.appendChild(hLine);
-      }
-      // Draw vertical grid lines
-      for (let j = 0; j <= days.length; j++) {
-        let vLine = document.createElement("div");
-        vLine.className = "grid-line";
-        vLine.style.left = (j * cellWidth) + "px";
-        vLine.style.top = "0px";
-        vLine.style.height = (numRows * cellHeight) + "px";
-        vLine.style.width = "1px";
-        container.appendChild(vLine);
-      }
-      
-      // Render event blocks for each day
-      days.forEach((day, dayIndex) => {
-        if (!scheduleMatrix[day]) return;
-        let dayEvents = groupDayEvents(scheduleMatrix[day]);
-        if (dayEvents.length === 0) return;
-        let { events, maxLevel } = assignLevels(dayEvents);
-        events.forEach(ev => {
-          let duration = ev.endIdx - ev.startIdx;
-          let topPos = ev.startIdx * cellHeight;
-          let availableWidth = cellWidth - 6;
-          let eventWidth = availableWidth / (maxLevel + 1);
-          let leftPos = dayIndex * cellWidth + ev.level * eventWidth + 2;
-          let block = document.createElement("div");
-          block.className = "event-block";
-          block.textContent = `${ev.label} (${indexToTime(ev.startIdx)} - ${indexToTime(ev.endIdx)})`;
-          block.style.top = topPos + "px";
-          block.style.left = leftPos + "px";
-          block.style.width = (eventWidth - 4) + "px";
-          block.style.height = (duration * cellHeight - 4) + "px";
-          // Store grid data for later updates
-          block.dataset.day = dayIndex;
-          block.dataset.startIdx = ev.startIdx;
-          block.dataset.duration = duration;
-          block.dataset.label = ev.label;
-          // Allow editing via double-click:
-          block.addEventListener("dblclick", () => {
-            let newLabel = prompt("Enter new label (or type DELETE to remove):", block.dataset.label);
-            if (newLabel === null) return; // cancelled
-            if (newLabel.toLowerCase() === "delete") {
-              block.remove();
-            } else {
-              block.dataset.label = newLabel;
-              // Optionally, change color via prompt:
-              let newColor = prompt("Enter new color in hex (e.g., #00d4ff) or leave blank to keep:", "");
-              if (newColor && newColor.match(/^#[0-9A-Fa-f]{6}$/)) {
-                block.style.background = newColor;
-              }
-              // Update text
-              let curStart = indexToTime(block.dataset.startIdx);
-              let curEnd = indexToTime(parseInt(block.dataset.startIdx) + parseInt(block.dataset.duration));
-              block.textContent = newLabel + " (" + curStart + " - " + curEnd + ")";
-            }
-          });
-          container.appendChild(block);
-        });
+
+    function buildEventBlock(ev, userTag, dayIndex, maxLevel) {
+      let duration = ev.endIdx - ev.startIdx;
+      let topPos = ev.startIdx * cellHeight;
+      let availableWidth = cellWidth - 6;
+      let eventWidth = availableWidth / (maxLevel + 1);
+      let leftPos = dayIndex * cellWidth + ev.level * eventWidth + 2;
+
+      // create the block
+      const block = document.createElement("div");
+      block.classList.add("event-block");
+      block.classList.add(userTag === "ana" ? "ana-block" : "thomas-block");
+      block.dataset.label = ev.label;
+      block.dataset.day = dayIndex;
+      block.dataset.startIdx = ev.startIdx;
+      block.dataset.duration = duration;
+
+      const timeStart = indexToTime(ev.startIdx);
+      const timeEnd = indexToTime(ev.endIdx);
+      block.textContent = `${ev.label} (${timeStart} - ${timeEnd})`;
+
+      block.style.top = topPos + "px";
+      block.style.left = leftPos + "px";
+      block.style.width = (eventWidth - 4) + "px";
+      block.style.height = (duration * cellHeight - 4) + "px";
+
+      // Double-click to edit or delete
+      block.addEventListener("dblclick", () => {
+        let newLabel = prompt("Enter new label (or type DELETE to remove):", block.dataset.label);
+        if (newLabel === null) return; // canceled
+        if (newLabel.toLowerCase() === "delete") {
+          block.remove();
+          return;
+        }
+        block.dataset.label = newLabel;
+        // Optionally change color
+        let newColor = prompt("Enter new color in hex (#00d4ff) or leave blank:", "");
+        if (newColor && /^#[0-9A-Fa-f]{6}$/.test(newColor)) {
+          block.style.background = newColor;
+        }
+        let curStart = indexToTime(block.dataset.startIdx);
+        let curEnd = indexToTime(parseInt(block.dataset.startIdx) + parseInt(block.dataset.duration));
+        block.textContent = newLabel + ` (${curStart} - ${curEnd})`;
       });
-      enableDraggingAndResizing();
+
+      return block;
     }
-    
-    // Use Interact.js to make event blocks draggable and resizable.
+
+    // ==============================
+    //  DRAG & RESIZE
+    // ==============================
     function enableDraggingAndResizing() {
       interact('.event-block')
         .draggable({
@@ -403,11 +410,13 @@
           let target = event.target;
           let newHeight = event.rect.height;
           target.style.height = newHeight + "px";
-          // Snap the new height to a multiple of cellHeight
+          // Snap
           let newDuration = Math.round(newHeight / cellHeight);
           target.dataset.duration = newDuration;
-          let newStartIdx = parseInt(target.dataset.startIdx);
-          target.textContent = target.dataset.label + " (" + indexToTime(newStartIdx) + " - " + indexToTime(newStartIdx + newDuration) + ")";
+          let newStartIdx = parseInt(target.dataset.startIdx, 10);
+          let curStart = indexToTime(newStartIdx);
+          let curEnd = indexToTime(newStartIdx + newDuration);
+          target.textContent = target.dataset.label + ` (${curStart} - ${curEnd})`;
         });
       
       function dragMoveListener(event) {
@@ -418,6 +427,7 @@
         target.setAttribute('data-x', x);
         target.setAttribute('data-y', y);
       }
+      
       function dragEndListener(event) {
         let target = event.target;
         let x = parseFloat(target.getAttribute('data-x')) || 0;
@@ -431,87 +441,108 @@
         let newStartIdx = y / cellHeight;
         target.dataset.day = newDay;
         target.dataset.startIdx = newStartIdx;
-        target.textContent = target.dataset.label + " (" + indexToTime(newStartIdx) + " - " + indexToTime(newStartIdx + parseInt(target.dataset.duration)) + ")";
+        let dur = parseInt(target.dataset.duration, 10);
+        let curStart = indexToTime(newStartIdx);
+        let curEnd = indexToTime(newStartIdx + dur);
+        target.textContent = target.dataset.label + ` (${curStart} - ${curEnd})`;
         updateSummary();
       }
     }
-    
-    // Render activity summary (total hours per activity), including free time calculations.
+
+    // ==============================
+    //  SUMMARY
+    // ==============================
+    // Single-schedule summary
     function renderSummary(scheduleMatrix) {
-      let counts = {};
-      days.forEach(day => {
-        if (scheduleMatrix[day]) {
-          scheduleMatrix[day].forEach(entry => {
-            if (entry.label && entry.label !== "Freespace") {
-              entry.label.split(" + ").forEach(lbl => {
-                lbl = lbl.trim();
-                if (!lbl) return;
-                counts[lbl] = (counts[lbl] || 0) + 0.5;
-              });
-            }
-          });
-        }
-      });
-      // Compute free time per day (total possible hours minus busy hours)
-      let totalHours = numRows * 0.5;
-      let freeTime = {};
-      days.forEach(day => {
-        let busy = 0;
-        if (scheduleMatrix[day]) {
-          scheduleMatrix[day].forEach(entry => {
-            if (entry.label && entry.label !== "Freespace") {
-              busy += 0.5;
-            }
-          });
-        }
-        freeTime[day] = totalHours - busy;
-      });
-      
-      const summaryDiv = document.getElementById("summary");
+      let summaryDiv = document.getElementById("summary");
+      summaryDiv.innerHTML = "";
       summaryDiv.innerHTML = "<h2>Activity Summary (Hours)</h2>";
-      let table = document.createElement("table");
-      let headerRow = document.createElement("tr");
-      ["Activity", "Hours"].forEach(text => {
-        let th = document.createElement("th");
-        th.textContent = text;
-        headerRow.appendChild(th);
-      });
-      table.appendChild(headerRow);
-      for (let act in counts) {
-        let tr = document.createElement("tr");
-        let td1 = document.createElement("td");
-        td1.textContent = act;
-        let td2 = document.createElement("td");
-        td2.textContent = counts[act];
-        tr.appendChild(td1);
-        tr.appendChild(td2);
-        table.appendChild(tr);
-      }
-      // Add free time summary per day
-      let freeRow = document.createElement("tr");
-      let tdFree = document.createElement("td");
-      tdFree.textContent = "Free Time (avg)";
-      let avgFree = Object.values(freeTime).reduce((a, b) => a + b, 0) / days.length;
-      let tdFreeHours = document.createElement("td");
-      tdFreeHours.textContent = avgFree.toFixed(1);
-      freeRow.appendChild(tdFree);
-      freeRow.appendChild(tdFreeHours);
-      table.appendChild(freeRow);
+      
+      let counts = calcActivityCounts(scheduleMatrix);
+      let table = buildSummaryTable(counts);
       summaryDiv.appendChild(table);
     }
-    
-    // Update summary based on current selection.
+
+    // Overlay-schedules summary
+    function renderSummaryOverlay(ana, thomas) {
+      let summaryDiv = document.getElementById("summary");
+      summaryDiv.innerHTML = "";
+      summaryDiv.innerHTML = "<h2>Overlay Summary</h2>";
+
+      // We'll show separate activity counts for each schedule,
+      // plus a line for "Overlap hours" and "Free time" if you want to expand
+      let anaCounts = calcActivityCounts(ana);
+      let thomasCounts = calcActivityCounts(thomas);
+
+      let anaTable = buildSummaryTable(anaCounts, "Ana");
+      let thomasTable = buildSummaryTable(thomasCounts, "Thomas");
+      
+      summaryDiv.appendChild(anaTable);
+      summaryDiv.appendChild(thomasTable);
+    }
+
+    // Build an object: { activityName: hourCount }
+    function calcActivityCounts(scheduleMatrix) {
+      let counts = {};
+      days.forEach(day => {
+        const arr = scheduleMatrix[day] || [];
+        arr.forEach(entry => {
+          if (entry.label && entry.label.trim() && entry.label !== "Freespace") {
+            entry.label.split(" + ").forEach(lbl => {
+              lbl = lbl.trim();
+              if (!lbl) return;
+              counts[lbl] = (counts[lbl] || 0) + 0.5;
+            });
+          }
+        });
+      });
+      return counts;
+    }
+
+    // Build a summary table
+    function buildSummaryTable(counts, title) {
+      let table = document.createElement("table");
+      let headerRow = document.createElement("tr");
+      let titleCell = document.createElement("th");
+      titleCell.textContent = title ? `${title} Activity` : "Activity";
+      let hoursCell = document.createElement("th");
+      hoursCell.textContent = "Hours";
+      headerRow.appendChild(titleCell);
+      headerRow.appendChild(hoursCell);
+      table.appendChild(headerRow);
+
+      let sortedActs = Object.keys(counts).sort();
+      sortedActs.forEach(act => {
+        let tr = document.createElement("tr");
+        let tdAct = document.createElement("td");
+        tdAct.textContent = act;
+        let tdHrs = document.createElement("td");
+        tdHrs.textContent = counts[act];
+        tr.appendChild(tdAct);
+        tr.appendChild(tdHrs);
+        table.appendChild(tr);
+      });
+      return table;
+    }
+
     function updateSummary() {
       const file = document.getElementById('scheduleSelect').value;
       if (file === "overlay") {
         Promise.all([loadCSV("ana_schedule.csv"), loadCSV("thomas_schedule.csv")])
-          .then(results => {
-            const merged = mergeScheduleMatrices(results[0], results[1]);
-            renderSummary(merged);
-          });
+          .then(results => renderSummaryOverlay(results[0], results[1]));
       } else {
         loadCSV(file).then(matrix => renderSummary(matrix));
       }
+    }
+
+    // ==============================
+    //  TIME HELPERS
+    // ==============================
+    function indexToTime(idx) {
+      let totalMins = idx * 30 + baseHour * 60;
+      let hrs = Math.floor(totalMins / 60);
+      let mins = totalMins % 60;
+      return (hrs < 10 ? "0" : "") + hrs + ":" + (mins < 10 ? "0" : "") + mins;
     }
   </script>
 </body>
