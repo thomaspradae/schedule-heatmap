@@ -4,33 +4,54 @@
   <meta charset="UTF-8">
   <title>Interactive Schedule Heatmap</title>
   <style>
+    /* Base styling */
     body {
-      font-family: sans-serif;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       margin: 20px;
+      background: #121212;
+      color: #e0e0e0;
     }
-    h1 { margin-bottom: 5px; }
+    h1 {
+      margin-bottom: 10px;
+      font-size: 1.8em;
+      text-shadow: 1px 1px 2px #000;
+    }
+    label, select, button {
+      font-size: 1em;
+      margin-right: 10px;
+    }
+    /* Container grid style */
     #scheduleContainer {
       position: relative;
       width: calc(7 * 150px);
-      height: calc(38 * 30px); /* 38 half-hour rows */
-      border: 1px solid #ccc;
+      height: calc(38 * 30px); /* 38 half-hour rows from 04:00 to 22:30 */
       margin-top: 20px;
+      border: 2px solid #444;
+      background: linear-gradient(135deg, #1e1e1e, #2c2c2c);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.5);
     }
     .grid-cell {
       position: absolute;
-      border: 1px solid #eee;
+      border: 1px solid rgba(255,255,255,0.1);
       box-sizing: border-box;
     }
+    /* Cool event blocks */
     .event-block {
       position: absolute;
-      background-color: rgba(0, 128, 255, 0.5);
-      border: 1px solid #0070aa;
-      color: white;
-      padding: 2px;
+      background: linear-gradient(145deg, #007aff, #00d4ff);
+      border: 1px solid #005bb5;
+      border-radius: 4px;
+      color: #fff;
+      padding: 2px 4px;
       cursor: move;
       box-sizing: border-box;
       overflow: hidden;
-      font-size: 0.8em;
+      font-size: 0.75em;
+      opacity: 0.92;
+      transition: transform 0.1s;
+    }
+    .event-block:hover {
+      box-shadow: 0 4px 6px rgba(0,0,0,0.4);
     }
     #summary {
       margin-top: 20px;
@@ -38,10 +59,12 @@
     table {
       border-collapse: collapse;
       margin-top: 10px;
+      width: 50%;
     }
     th, td {
-      padding: 5px 10px;
-      border: 1px solid #ccc;
+      padding: 8px 12px;
+      border: 1px solid #555;
+      text-align: left;
     }
   </style>
 </head>
@@ -58,25 +81,25 @@
   
   <div id="scheduleContainer"></div>
   
-  <!-- PapaParse for CSV parsing -->
+  <!-- Libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
-  <!-- Interact.js for drag-and-drop -->
   <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
+  
   <script>
     // Config constants
-    const cellWidth = 150;       // Width for each day column in px
-    const cellHeight = 30;       // Height per half-hour block (each row)
-    const baseHour = 4;          // Schedule starts at 04:00
-    const numRows = 38;          // 38 half-hour slots from 04:00 to 22:30
+    const cellWidth = 150;      // per day column width in px
+    const cellHeight = 30;      // per half-hour row height
+    const baseHour = 4;         // schedule starts at 04:00
+    const numRows = 38;         // 38 half-hour intervals (04:00 to 22:30)
     const days = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
 
-    // When clicking the button, load the CSV file for the selected schedule
+    // On click, load the CSV file for the selected schedule
     document.getElementById('loadSchedule').addEventListener('click', () => {
       const file = document.getElementById('scheduleSelect').value;
       loadScheduleCSV(file);
     });
 
-    // Load CSV using PapaParse
+    // Load CSV with PapaParse
     function loadScheduleCSV(filePath) {
       Papa.parse(filePath, {
         download: true,
@@ -85,24 +108,21 @@
         }
       });
     }
-
-    // Process CSV data (assumes first row header; first column = time labels)
+    
+    // Process CSV data: expects first row header with times in first column and days in subsequent columns.
     function processCSVData(data) {
-      // Check format – if data is an array of arrays:
       if(Array.isArray(data) && Array.isArray(data[0])) {
-        let header = data[0]; // e.g. [ "", "Lunes", "Martes", ... ]
+        let header = data[0]; // e.g., [ "", "Lunes", "Martes", ... ]
         let scheduleMatrix = {};  // scheduleMatrix[day] = array of { time, label }
         for(let i = 1; i < data.length; i++) {
           let row = data[i];
           let time = row[0];
-          // Loop over days (from second column onward)
           for(let j = 1; j < header.length; j++) {
             let day = header[j];
             if(!scheduleMatrix[day]) scheduleMatrix[day] = [];
             scheduleMatrix[day].push({ time: time, label: row[j] });
           }
         }
-        // Render grid view and the activity summary.
         renderSchedule(scheduleMatrix);
         renderSummary(scheduleMatrix);
       } else {
@@ -110,105 +130,123 @@
       }
     }
     
-    // Convert a HH:MM time string to the row index (0 = 04:00)
+    // Helper: convert HH:MM to row index (0 corresponds to 04:00)
     function timeToIndex(timeStr) {
-      let parts = timeStr.split(":");
-      let hours = parseInt(parts[0]);
-      let minutes = parseInt(parts[1]);
+      let [hours, minutes] = timeStr.split(":").map(Number);
       return ((hours - baseHour) * 60 + minutes) / 30;
     }
     
-    // Convert an index back to a HH:MM string
+    // Helper: convert row index back to HH:MM string
     function indexToTime(idx) {
-      let totalMinutes = idx * 30 + baseHour * 60;
-      let hours = Math.floor(totalMinutes / 60);
-      let minutes = totalMinutes % 60;
-      return (hours < 10 ? "0" : "") + hours + ":" + (minutes < 10 ? "0" : "") + minutes;
+      let totalMins = idx * 30 + baseHour * 60;
+      let hrs = Math.floor(totalMins / 60);
+      let mins = totalMins % 60;
+      return (hrs < 10 ? "0" : "") + hrs + ":" + (mins < 10 ? "0" : "") + mins;
     }
     
-    // Render the schedule as an interactive grid with event blocks
-    function renderSchedule(scheduleMatrix) {
-      const container = document.getElementById("scheduleContainer");
-      container.innerHTML = "";  // Clear previous content
-      
-      // Draw grid background lines
-      for(let i = 0; i <= numRows; i++) {
-         let hrLine = document.createElement("div");
-         hrLine.style.position = "absolute";
-         hrLine.style.top = (i * cellHeight) + "px";
-         hrLine.style.left = "0px";
-         hrLine.style.width = (cellWidth * days.length) + "px";
-         hrLine.style.height = "1px";
-         hrLine.style.background = "#ddd";
-         container.appendChild(hrLine);
-      }
-      for(let j = 0; j <= days.length; j++){
-         let vrLine = document.createElement("div");
-         vrLine.style.position = "absolute";
-         vrLine.style.left = (j * cellWidth) + "px";
-         vrLine.style.top = "0px";
-         vrLine.style.height = (numRows * cellHeight) + "px";
-         vrLine.style.width = "1px";
-         vrLine.style.background = "#ddd";
-         container.appendChild(vrLine);
-      }
-      
-      // For each day, group contiguous blocks with the same label (ignoring "Freespace")
-      days.forEach((day, dayIndex) => {
-        if(!scheduleMatrix[day]) return;
-        let blocks = [];
-        let currentBlock = null;
-        scheduleMatrix[day].forEach((entry, i) => {
-          let label = entry.label;
-          if(label === "Freespace") {
-            if(currentBlock) {
-              blocks.push(currentBlock);
-              currentBlock = null;
-            }
-            return;
-          }
-          if(currentBlock && currentBlock.label === label) {
-            // Extend the current block
-            currentBlock.endIdx = i;
+    // Group contiguous cells into event blocks per day, splitting multiple events if needed.
+    function groupDayEvents(dayData) {
+      let events = []; // each event: { label, startIdx, endIdx }
+      dayData.forEach((entry, i) => {
+        if(entry.label === "Freespace") return;
+        // If cell contains multiple events, split them
+        let labels = entry.label.split(" + ");
+        labels.forEach(lbl => {
+          // Check if an event with the same label exists in the previous row (i-1)
+          let last = events.length ? events[events.length - 1] : null;
+          if(last && last.label === lbl && last.endIdx === i) {
+            last.endIdx = i + 1;
           } else {
-            if(currentBlock) blocks.push(currentBlock);
-            currentBlock = { label: label, startIdx: i, endIdx: i };
+            events.push({ label: lbl, startIdx: i, endIdx: i + 1 });
           }
         });
-        if(currentBlock) blocks.push(currentBlock);
+      });
+      return events;
+    }
+    
+    // Assign overlapping events levels so they can be offset horizontally.
+    function assignLevels(events) {
+      // Sort events by start time
+      events.sort((a,b) => a.startIdx - b.startIdx);
+      // For each event, assign the lowest level that doesn't conflict
+      events.forEach(ev => {
+        let level = 0;
+        while(events.some(other => other !== ev &&
+              other.level === level &&
+              other.startIdx < ev.endIdx &&
+              other.endIdx > ev.startIdx)) {
+          level++;
+        }
+        ev.level = level;
+      });
+      // Compute maximum level for this day
+      let maxLevel = events.reduce((max, ev) => Math.max(max, ev.level), 0);
+      return { events, maxLevel };
+    }
+    
+    // Render the interactive schedule grid with event blocks overlaid.
+    function renderSchedule(scheduleMatrix) {
+      const container = document.getElementById("scheduleContainer");
+      container.innerHTML = "";  // clear previous
+      
+      // Draw grid background lines (cool subtle lines)
+      for(let i = 0; i <= numRows; i++) {
+         let line = document.createElement("div");
+         line.style.position = "absolute";
+         line.style.top = (i * cellHeight) + "px";
+         line.style.left = "0px";
+         line.style.width = (cellWidth * days.length) + "px";
+         line.style.height = "1px";
+         line.style.background = "rgba(255,255,255,0.1)";
+         container.appendChild(line);
+      }
+      for(let j = 0; j <= days.length; j++){
+         let line = document.createElement("div");
+         line.style.position = "absolute";
+         line.style.left = (j * cellWidth) + "px";
+         line.style.top = "0px";
+         line.style.height = (numRows * cellHeight) + "px";
+         line.style.width = "1px";
+         line.style.background = "rgba(255,255,255,0.1)";
+         container.appendChild(line);
+      }
+      
+      // For each day, process its events and render them
+      days.forEach((day, dayIndex) => {
+        if(!scheduleMatrix[day]) return;
+        // Group contiguous events for this day (each cell corresponds to a half-hour slot)
+        let dayEvents = groupDayEvents(scheduleMatrix[day]);
+        if(dayEvents.length === 0) return;
         
-        // Create a div for each contiguous event block
-        blocks.forEach(block => {
-          let startIdx = block.startIdx;
-          let duration = block.endIdx - block.startIdx + 1;
-          let blockDiv = document.createElement("div");
-          blockDiv.className = "event-block";
-          blockDiv.textContent = block.label + " (" + scheduleMatrix[day][startIdx].time + " - " + indexToTime(timeToIndex(scheduleMatrix[day][startIdx].time) + duration) + ")";
+        let { events, maxLevel } = assignLevels(dayEvents);
+        events.forEach(ev => {
+          let duration = ev.endIdx - ev.startIdx;
+          let topPos = ev.startIdx * cellHeight;
+          // Compute available width for events within a day column
+          let availableWidth = cellWidth - 6;
+          let eventWidth = availableWidth / (maxLevel + 1);
+          let leftPos = dayIndex * cellWidth + ev.level * eventWidth + 2;
+          let block = document.createElement("div");
+          block.className = "event-block";
+          block.textContent = `${ev.label} (${indexToTime(ev.startIdx)} - ${indexToTime(ev.endIdx)})`;
+          block.style.top = topPos + "px";
+          block.style.left = leftPos + "px";
+          block.style.width = (eventWidth - 4) + "px";
+          block.style.height = (duration * cellHeight - 4) + "px";
+          // Save current grid info for drag updates
+          block.dataset.day = dayIndex;
+          block.dataset.startIdx = ev.startIdx;
+          block.dataset.duration = duration;
+          block.dataset.label = ev.label;
           
-          // Position & dimension calculations
-          let topPos = startIdx * cellHeight;
-          let leftPos = dayIndex * cellWidth;
-          let height = duration * cellHeight;
-          blockDiv.style.top = topPos + "px";
-          blockDiv.style.left = leftPos + "px";
-          blockDiv.style.width = (cellWidth - 4) + "px";   // with padding offset
-          blockDiv.style.height = (height - 4) + "px";
-          
-          // Save data attributes for updates on drag
-          blockDiv.dataset.day = dayIndex;
-          blockDiv.dataset.startIdx = startIdx;
-          blockDiv.dataset.duration = duration;
-          blockDiv.dataset.label = block.label;
-          
-          container.appendChild(blockDiv);
+          container.appendChild(block);
         });
       });
       
-      // Enable dragging on event blocks.
       enableDragging();
     }
     
-    // Enable Interact.js drag functionality
+    // Enable dragging with Interact.js
     function enableDragging() {
       interact('.event-block').draggable({
         inertia: true,
@@ -220,16 +258,17 @@
         ],
         autoScroll: true,
         onmove: dragMoveListener,
-        onend: function (event) {
+        onend: function(event) {
           let target = event.target;
           let x = parseFloat(target.getAttribute('data-x')) || 0;
           let y = parseFloat(target.getAttribute('data-y')) || 0;
           // Snap to grid
           x = Math.round(x / cellWidth) * cellWidth;
           y = Math.round(y / cellHeight) * cellHeight;
-          target.style.transform = 'translate(' + x + 'px, ' + y + 'px)';
+          target.style.transform = `translate(${x}px, ${y}px)`;
           target.setAttribute('data-x', x);
           target.setAttribute('data-y', y);
+          // Update new day and time slot
           let newDay = Math.floor(x / cellWidth);
           let newStartIdx = y / cellHeight;
           target.dataset.day = newDay;
@@ -237,29 +276,31 @@
           let newTime = indexToTime(newStartIdx);
           let newEnd = indexToTime(newStartIdx + parseInt(target.dataset.duration));
           target.textContent = target.dataset.label + " (" + newTime + " - " + newEnd + ")";
-          updateSummary(); // optional: recalc summary if events have moved
+          updateSummary();  // recalc summary if necessary
         }
       });
       
-      function dragMoveListener (event) {
+      function dragMoveListener(event) {
         let target = event.target;
         let x = (parseFloat(target.getAttribute('data-x')) || 0) + event.dx;
         let y = (parseFloat(target.getAttribute('data-y')) || 0) + event.dy;
-        target.style.transform = 'translate(' + x + 'px, ' + y + 'px)';
+        target.style.transform = `translate(${x}px, ${y}px)`;
         target.setAttribute('data-x', x);
         target.setAttribute('data-y', y);
       }
     }
     
-    // Create an activity summary table by counting total hours per activity
+    // Build an activity summary (total hours per activity) using the raw matrix.
     function renderSummary(scheduleMatrix) {
       let counts = {};
       days.forEach(day => {
         if(scheduleMatrix[day]) {
           scheduleMatrix[day].forEach(entry => {
-            let label = entry.label;
-            if(label !== "Freespace") {
-              counts[label] = (counts[label] || 0) + 0.5;  // each row is 0.5 hr
+            if(entry.label !== "Freespace") {
+              // If multiple events, count each (each slot = 0.5hr)
+              entry.label.split(" + ").forEach(lbl => {
+                counts[lbl] = (counts[lbl] || 0) + 0.5;
+              });
             }
           });
         }
@@ -268,12 +309,11 @@
       summaryDiv.innerHTML = "<h2>Activity Summary (Hours)</h2>";
       let table = document.createElement("table");
       let headerRow = document.createElement("tr");
-      let th1 = document.createElement("th");
-      th1.textContent = "Activity";
-      let th2 = document.createElement("th");
-      th2.textContent = "Hours";
-      headerRow.appendChild(th1);
-      headerRow.appendChild(th2);
+      ["Activity", "Hours"].forEach(text => {
+        let th = document.createElement("th");
+        th.textContent = text;
+        headerRow.appendChild(th);
+      });
       table.appendChild(headerRow);
       for (let act in counts) {
         let tr = document.createElement("tr");
@@ -288,7 +328,7 @@
       summaryDiv.appendChild(table);
     }
     
-    // Dummy updateSummary – reloads the CSV to recalc summary (could be optimized)
+    // Recalculate summary on event drag end (dummy: reload CSV)
     function updateSummary() {
       const file = document.getElementById('scheduleSelect').value;
       loadScheduleCSV(file);
