@@ -74,6 +74,7 @@
   <select id="scheduleSelect">
       <option value="ana_schedule.csv">Ana's Schedule</option>
       <option value="thomas_schedule.csv">Thomas's Schedule</option>
+      <option value="overlay">Overlay Schedules</option>
   </select>
   <button id="loadSchedule">Load Schedule</button>
   
@@ -93,41 +94,91 @@
     const numRows = 38;         // 38 half-hour intervals (04:00 to 22:30)
     const days = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
 
-    // On click, load the CSV file for the selected schedule
     document.getElementById('loadSchedule').addEventListener('click', () => {
       const file = document.getElementById('scheduleSelect').value;
-      loadScheduleCSV(file);
+      if (file === "overlay") {
+        // Load both CSVs and merge
+        Promise.all([loadCSV("ana_schedule.csv"), loadCSV("thomas_schedule.csv")])
+          .then(results => {
+            const merged = mergeScheduleMatrices(results[0], results[1]);
+            renderSchedule(merged);
+            renderSummary(merged);
+          })
+          .catch(err => console.error("Error loading CSVs for overlay:", err));
+      } else {
+        loadScheduleCSV(file);
+      }
     });
 
-    // Load CSV with PapaParse
-    function loadScheduleCSV(filePath) {
-      Papa.parse(filePath, {
-        download: true,
-        complete: function(results) {
-          processCSVData(results.data);
-        }
+    // Return a Promise that resolves with the parsed CSV data as a matrix (object with day keys)
+    function loadCSV(filePath) {
+      return new Promise((resolve, reject) => {
+        Papa.parse(filePath, {
+          download: true,
+          complete: function(results) {
+            const data = results.data;
+            if (Array.isArray(data) && Array.isArray(data[0])) {
+              let header = data[0];
+              let scheduleMatrix = {};
+              for (let i = 1; i < data.length; i++) {
+                let row = data[i];
+                let time = row[0];
+                for (let j = 1; j < header.length; j++) {
+                  let day = header[j];
+                  if (!scheduleMatrix[day]) scheduleMatrix[day] = [];
+                  scheduleMatrix[day].push({ time: time, label: row[j] });
+                }
+              }
+              console.log("Loaded", filePath, scheduleMatrix);
+              resolve(scheduleMatrix);
+            } else {
+              reject("Unexpected CSV format in " + filePath);
+            }
+          },
+          error: function(err) {
+            reject(err);
+          }
+        });
       });
     }
+
+    // For non-overlay, use this function
+    function loadScheduleCSV(filePath) {
+      loadCSV(filePath)
+        .then(matrix => {
+          renderSchedule(matrix);
+          renderSummary(matrix);
+        })
+        .catch(err => console.error(err));
+    }
     
-    // Process CSV data: expects first row header with times in first column and days in subsequent columns.
-    function processCSVData(data) {
-      if(Array.isArray(data) && Array.isArray(data[0])) {
-        let header = data[0]; // e.g., [ "", "Lunes", "Martes", ... ]
-        let scheduleMatrix = {};  // scheduleMatrix[day] = array of { time, label }
-        for(let i = 1; i < data.length; i++) {
-          let row = data[i];
-          let time = row[0];
-          for(let j = 1; j < header.length; j++) {
-            let day = header[j];
-            if(!scheduleMatrix[day]) scheduleMatrix[day] = [];
-            scheduleMatrix[day].push({ time: time, label: row[j] });
+    // Merge two schedule matrices (assumes same structure and row count per day)
+    function mergeScheduleMatrices(m1, m2) {
+      let merged = {};
+      days.forEach(day => {
+        const arr1 = m1[day] || [];
+        const arr2 = m2[day] || [];
+        let mergedDay = [];
+        const maxLen = Math.max(arr1.length, arr2.length);
+        for (let i = 0; i < maxLen; i++) {
+          const label1 = arr1[i] ? arr1[i].label : "Freespace";
+          const label2 = arr2[i] ? arr2[i].label : "Freespace";
+          let mergedLabel = "";
+          if ((label1 === "Freespace" || !label1.trim()) && (label2 !== "Freespace" && label2.trim())) {
+            mergedLabel = label2;
+          } else if ((label2 === "Freespace" || !label2.trim()) && (label1 !== "Freespace" && label1.trim())) {
+            mergedLabel = label1;
+          } else if ((label1 !== "Freespace" && label1.trim()) && (label2 !== "Freespace" && label2.trim())) {
+            mergedLabel = label1 + " + " + label2;
+          } else {
+            mergedLabel = "Freespace";
           }
+          mergedDay.push({ time: (arr1[i] ? arr1[i].time : (arr2[i] ? arr2[i].time : indexToTime(i))), label: mergedLabel });
         }
-        renderSchedule(scheduleMatrix);
-        renderSummary(scheduleMatrix);
-      } else {
-        console.error("Unexpected CSV format.");
-      }
+        merged[day] = mergedDay;
+      });
+      console.log("Merged schedule:", merged);
+      return merged;
     }
     
     // Helper: convert HH:MM to row index (0 corresponds to 04:00)
@@ -144,17 +195,18 @@
       return (hrs < 10 ? "0" : "") + hrs + ":" + (mins < 10 ? "0" : "") + mins;
     }
     
-    // Group contiguous cells into event blocks per day, splitting multiple events if needed.
+    // Group contiguous cells into event blocks per day.
     function groupDayEvents(dayData) {
       let events = []; // each event: { label, startIdx, endIdx }
       dayData.forEach((entry, i) => {
-        if(entry.label === "Freespace") return;
-        // If cell contains multiple events, split them
+        // Skip if no valid label
+        if (!entry || !entry.label || entry.label.trim() === "" || entry.label === "Freespace") return;
         let labels = entry.label.split(" + ");
         labels.forEach(lbl => {
-          // Check if an event with the same label exists in the previous row (i-1)
+          lbl = lbl.trim();
+          if (!lbl) return;
           let last = events.length ? events[events.length - 1] : null;
-          if(last && last.label === lbl && last.endIdx === i) {
+          if (last && last.label === lbl && last.endIdx === i) {
             last.endIdx = i + 1;
           } else {
             events.push({ label: lbl, startIdx: i, endIdx: i + 1 });
@@ -166,9 +218,7 @@
     
     // Assign overlapping events levels so they can be offset horizontally.
     function assignLevels(events) {
-      // Sort events by start time
       events.sort((a,b) => a.startIdx - b.startIdx);
-      // For each event, assign the lowest level that doesn't conflict
       events.forEach(ev => {
         let level = 0;
         while(events.some(other => other !== ev &&
@@ -179,17 +229,17 @@
         }
         ev.level = level;
       });
-      // Compute maximum level for this day
       let maxLevel = events.reduce((max, ev) => Math.max(max, ev.level), 0);
       return { events, maxLevel };
     }
     
     // Render the interactive schedule grid with event blocks overlaid.
     function renderSchedule(scheduleMatrix) {
+      console.log("Rendering schedule:", scheduleMatrix);
       const container = document.getElementById("scheduleContainer");
       container.innerHTML = "";  // clear previous
       
-      // Draw grid background lines (cool subtle lines)
+      // Draw grid background lines
       for(let i = 0; i <= numRows; i++) {
          let line = document.createElement("div");
          line.style.position = "absolute";
@@ -211,10 +261,9 @@
          container.appendChild(line);
       }
       
-      // For each day, process its events and render them
+      // Render events per day
       days.forEach((day, dayIndex) => {
         if(!scheduleMatrix[day]) return;
-        // Group contiguous events for this day (each cell corresponds to a half-hour slot)
         let dayEvents = groupDayEvents(scheduleMatrix[day]);
         if(dayEvents.length === 0) return;
         
@@ -222,7 +271,6 @@
         events.forEach(ev => {
           let duration = ev.endIdx - ev.startIdx;
           let topPos = ev.startIdx * cellHeight;
-          // Compute available width for events within a day column
           let availableWidth = cellWidth - 6;
           let eventWidth = availableWidth / (maxLevel + 1);
           let leftPos = dayIndex * cellWidth + ev.level * eventWidth + 2;
@@ -233,20 +281,17 @@
           block.style.left = leftPos + "px";
           block.style.width = (eventWidth - 4) + "px";
           block.style.height = (duration * cellHeight - 4) + "px";
-          // Save current grid info for drag updates
           block.dataset.day = dayIndex;
           block.dataset.startIdx = ev.startIdx;
           block.dataset.duration = duration;
           block.dataset.label = ev.label;
-          
           container.appendChild(block);
         });
       });
-      
       enableDragging();
     }
     
-    // Enable dragging with Interact.js
+    // Enable drag-and-drop using Interact.js.
     function enableDragging() {
       interact('.event-block').draggable({
         inertia: true,
@@ -262,13 +307,11 @@
           let target = event.target;
           let x = parseFloat(target.getAttribute('data-x')) || 0;
           let y = parseFloat(target.getAttribute('data-y')) || 0;
-          // Snap to grid
           x = Math.round(x / cellWidth) * cellWidth;
           y = Math.round(y / cellHeight) * cellHeight;
           target.style.transform = `translate(${x}px, ${y}px)`;
           target.setAttribute('data-x', x);
           target.setAttribute('data-y', y);
-          // Update new day and time slot
           let newDay = Math.floor(x / cellWidth);
           let newStartIdx = y / cellHeight;
           target.dataset.day = newDay;
@@ -276,7 +319,7 @@
           let newTime = indexToTime(newStartIdx);
           let newEnd = indexToTime(newStartIdx + parseInt(target.dataset.duration));
           target.textContent = target.dataset.label + " (" + newTime + " - " + newEnd + ")";
-          updateSummary();  // recalc summary if necessary
+          updateSummary();
         }
       });
       
@@ -296,9 +339,10 @@
       days.forEach(day => {
         if(scheduleMatrix[day]) {
           scheduleMatrix[day].forEach(entry => {
-            if(entry.label !== "Freespace") {
-              // If multiple events, count each (each slot = 0.5hr)
+            if(entry.label && entry.label !== "Freespace") {
               entry.label.split(" + ").forEach(lbl => {
+                lbl = lbl.trim();
+                if (!lbl) return;
                 counts[lbl] = (counts[lbl] || 0) + 0.5;
               });
             }
@@ -328,10 +372,18 @@
       summaryDiv.appendChild(table);
     }
     
-    // Recalculate summary on event drag end (dummy: reload CSV)
+    // Dummy updateSummary – reloads the currently selected CSV (or overlay) to recalc summary.
     function updateSummary() {
       const file = document.getElementById('scheduleSelect').value;
-      loadScheduleCSV(file);
+      if(file === "overlay") {
+        Promise.all([loadCSV("ana_schedule.csv"), loadCSV("thomas_schedule.csv")])
+          .then(results => {
+            const merged = mergeScheduleMatrices(results[0], results[1]);
+            renderSummary(merged);
+          });
+      } else {
+        loadCSV(file).then(matrix => renderSummary(matrix));
+      }
     }
   </script>
 </body>
