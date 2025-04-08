@@ -10,128 +10,167 @@
       margin: 20px;
       background: #121212;
       color: #e0e0e0;
+      text-align: center;
     }
     h1 {
-      margin-bottom: 10px;
-      font-size: 1.8em;
+      margin-bottom: 20px;
+      font-size: 2em;
       text-shadow: 1px 1px 2px #000;
     }
     label, select, button {
-      font-size: 1em;
+      font-size: 1.1em;
       margin-right: 10px;
     }
-    /* Calendar container */
+    /* Wrapper to center the calendar */
+    #wrapper {
+      max-width: 1400px;
+      margin: auto;
+    }
+    /* Calendar container (includes time column and grid) */
     #calendarContainer {
       position: relative;
-      width: calc(7 * 150px + 70px); /* 70px for time column */
-      margin-top: 20px;
+      width: calc(7 * 200px + 70px); /* Increase day column to 200px */
+      margin: 20px auto;
       display: flex;
+      justify-content: center;
     }
     /* Day header (top row) */
     #dayHeader {
       position: relative;
-      width: calc(7 * 150px);
-      height: 30px;
+      width: calc(7 * 200px);
+      height: 40px; /* increased height */
       margin-left: 70px;
       display: flex;
+      font-size: 1.1em;
+      background: #1e1e1e;
+      border: 1px solid #444;
     }
     #dayHeader div {
       flex: 1;
       text-align: center;
-      line-height: 30px;
-      background: #1e1e1e;
-      border: 1px solid #444;
+      line-height: 40px;
+      border-right: 1px solid #444;
+    }
+    #dayHeader div:last-child {
+      border-right: none;
     }
     /* Time column (left side) */
     #timeColumn {
       width: 70px;
       background: #1e1e1e;
       border: 1px solid #444;
+      font-size: 0.9em;
     }
     #timeColumn div {
-      height: 30px;
+      height: 40px; /* match header height */
       text-align: right;
-      padding-right: 4px;
+      padding-right: 6px;
       box-sizing: border-box;
       border-bottom: 1px solid rgba(255,255,255,0.1);
-      line-height: 30px;
+      line-height: 40px;
     }
     /* Schedule container (grid area) */
     #scheduleContainer {
       position: relative;
-      width: calc(7 * 150px);
-      height: calc(38 * 30px);
+      width: calc(7 * 200px);
+      height: calc(38 * 40px); /* increased row height to 40px */
       border: 2px solid #444;
       background: linear-gradient(135deg, #1e1e1e, #2c2c2c);
       box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+      margin-left: 0;
     }
     /* Grid lines */
     .grid-line {
       position: absolute;
-      background: rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.15);
     }
     /* Event blocks */
     .event-block {
       position: absolute;
-      border: 1px solid #005bb5;
-      border-radius: 4px;
+      border: 1px solid;
+      border-radius: 6px;
       color: #fff;
-      padding: 2px 4px;
+      padding: 4px;
       cursor: move;
       box-sizing: border-box;
-      overflow: hidden;
-      font-size: 0.75em;
-      opacity: 0.8; /* slightly transparent */
+      overflow: visible;
+      font-size: 0.85em;
+      opacity: 0.9;
       transition: transform 0.1s;
+      white-space: normal;
+      word-wrap: break-word;
+      text-align: center;
     }
     .event-block:hover {
-      box-shadow: 0 4px 6px rgba(0,0,0,0.4);
+      box-shadow: 0 4px 6px rgba(0,0,0,0.6);
     }
-    /* Distinguish color schemes for Ana & Thomas */
+    /* Color schemes */
     .ana-block {
       background: rgba(0, 122, 255, 0.7); /* translucent blue */
       border-color: #0060aa;
+      mix-blend-mode: screen;
     }
     .thomas-block {
       background: rgba(255, 165, 0, 0.7); /* translucent orange */
       border-color: #cc6600;
+      mix-blend-mode: screen;
     }
-    /* Summary styling */
+    /* In overlay mode, add a new blend for intersections */
+    .overlay-blend {
+      mix-blend-mode: multiply;
+    }
+    /* Modern summary table styling */
     #summary {
-      margin-top: 20px;
+      margin: 30px auto;
+      width: 60%;
+      text-align: left;
+    }
+    #summary h2 {
+      border-bottom: 2px solid #444;
+      padding-bottom: 5px;
+      margin-bottom: 10px;
     }
     #summary table {
+      width: 100%;
       border-collapse: collapse;
-      margin-top: 10px;
-      width: 50%;
+      background: #1e1e1e;
+      border-radius: 6px;
+      overflow: hidden;
     }
     #summary th, #summary td {
-      padding: 8px 12px;
-      border: 1px solid #555;
-      text-align: left;
+      padding: 10px 12px;
+      border: 1px solid #333;
+    }
+    #summary th {
+      background: #222;
     }
   </style>
 </head>
 <body>
-  <h1>Interactive Schedule Heatmap</h1>
-  <label for="scheduleSelect">Select schedule:</label>
-  <select id="scheduleSelect">
-      <option value="ana_schedule.csv">Ana's Schedule</option>
-      <option value="thomas_schedule.csv">Thomas's Schedule</option>
-      <option value="overlay">Overlay Schedules</option>
-  </select>
-  <button id="loadSchedule">Load Schedule</button>
+  <div id="wrapper">
+    <h1>Interactive Schedule Heatmap</h1>
+    <div>
+      <label for="scheduleSelect">Select schedule:</label>
+      <select id="scheduleSelect">
+          <option value="ana_schedule.csv">Ana's Schedule</option>
+          <option value="thomas_schedule.csv">Thomas's Schedule</option>
+          <option value="overlay">Overlay Schedules</option>
+      </select>
+      <button id="loadSchedule">Load Schedule</button>
+    </div>
   
-  <!-- Calendar with headers and side times -->
-  <div id="dayHeader"></div>
-  <div id="calendarContainer">
-    <div id="timeColumn"></div>
-    <div id="scheduleContainer"></div>
+    <!-- Day header -->
+    <div id="dayHeader"></div>
+    <!-- Calendar container -->
+    <div id="calendarContainer">
+      <div id="timeColumn"></div>
+      <div id="scheduleContainer"></div>
+    </div>
+    <!-- Summary -->
+    <div id="summary"></div>
   </div>
   
-  <div id="summary"></div>
-  
-  <!-- Libraries -->
+  <!-- External Libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
   
@@ -139,10 +178,10 @@
     // ==============================
     //  CONFIG & CONSTANTS
     // ==============================
-    const cellWidth = 150;
-    const cellHeight = 30;
-    const baseHour = 4;   // 04:00
-    const numRows = 38;   // 04:00 to 22:30 in half-hour increments
+    const cellWidth = 200;               // increased width per day column
+    const cellHeight = 40;               // increased height per half-hour row
+    const baseHour = 4;                  // 04:00 start time
+    const numRows = 38;                  // rows from 04:00 to 22:30 in half-hour increments
     const days = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
 
     // ==============================
@@ -168,16 +207,13 @@
     renderHeaders();
 
     // ==============================
-    //  LOADING & PARSING CSV
+    //  CSV LOADING & PARSING
     // ==============================
     document.getElementById('loadSchedule').addEventListener('click', () => {
       const file = document.getElementById('scheduleSelect').value;
       if (file === "overlay") {
-        // Load both and overlay them
         Promise.all([loadCSV("ana_schedule.csv"), loadCSV("thomas_schedule.csv")])
           .then(results => {
-            // We'll render them side by side in the same container
-            // with partial transparency for each person's schedule
             const ana = results[0];
             const thomas = results[1];
             renderOverlaySchedules(ana, thomas);
@@ -221,7 +257,6 @@
     function loadScheduleCSV(filePath) {
       loadCSV(filePath)
         .then(matrix => {
-          // single-schedule scenario
           renderSingleSchedule(matrix, filePath.includes("ana") ? "ana" : "thomas");
           renderSummary(matrix);
         })
@@ -229,20 +264,18 @@
     }
 
     // ==============================
-    //  OVERLAY SCHEDULES
+    //  OVERLAY MODE
     // ==============================
     function renderOverlaySchedules(anaMatrix, thomasMatrix) {
-      // Clear container, draw grid lines
       initGrid();
-      // Render Ana's blocks in partial-blue
+      // Render each schedule with its class – using blend mode to highlight overlaps.
       renderOneSchedule(anaMatrix, "ana");
-      // Render Thomas's blocks in partial-orange
       renderOneSchedule(thomasMatrix, "thomas");
       enableDraggingAndResizing();
     }
 
     // ==============================
-    //  SINGLE SCHEDULE
+    //  SINGLE SCHEDULE MODE
     // ==============================
     function renderSingleSchedule(scheduleMatrix, userTag) {
       initGrid();
@@ -251,12 +284,12 @@
     }
 
     // ==============================
-    //  SHARED RENDERING
+    //  SHARED RENDERING FUNCTIONS
     // ==============================
     function initGrid() {
       const container = document.getElementById("scheduleContainer");
       container.innerHTML = "";
-      // Horizontal lines
+      // Draw horizontal grid lines
       for (let i = 0; i <= numRows; i++) {
         let hLine = document.createElement("div");
         hLine.className = "grid-line";
@@ -266,7 +299,7 @@
         hLine.style.height = "1px";
         container.appendChild(hLine);
       }
-      // Vertical lines
+      // Draw vertical grid lines
       for (let j = 0; j <= days.length; j++) {
         let vLine = document.createElement("div");
         vLine.className = "grid-line";
@@ -282,12 +315,10 @@
       const container = document.getElementById("scheduleContainer");
       days.forEach((day, dayIndex) => {
         const dayData = scheduleMatrix[day] || [];
-        // Group contiguous blocks
+        // Group contiguous blocks (if same activity occupies consecutive cells, collapse them)
         let events = groupDayEvents(dayData);
         if (events.length === 0) return;
-        // Assign overlap levels
         const { events: finalEvents, maxLevel } = assignLevels(events);
-        // Render blocks
         finalEvents.forEach(ev => {
           const block = buildEventBlock(ev, userTag, dayIndex, maxLevel);
           container.appendChild(block);
@@ -295,13 +326,13 @@
       });
     }
 
-    // Group contiguous half-hour segments with the same label
+    // Group contiguous half-hour segments with same label into one block.
     function groupDayEvents(dayData) {
       let events = [];
       dayData.forEach((entry, i) => {
         if (!entry || !entry.label.trim() || entry.label.trim() === "Freespace") return;
-        let labels = entry.label.split(" + ");
-        labels.forEach(lbl => {
+        let parts = entry.label.split(" + ");
+        parts.forEach(lbl => {
           lbl = lbl.trim();
           if (!lbl) return;
           let last = events.length ? events[events.length - 1] : null;
@@ -315,9 +346,9 @@
       return events;
     }
 
-    // If events overlap in time, bump their "level" so they appear side by side
+    // Assign overlapping events levels so they display side-by-side.
     function assignLevels(events) {
-      events.sort((a,b) => a.startIdx - b.startIdx);
+      events.sort((a, b) => a.startIdx - b.startIdx);
       events.forEach(ev => {
         let level = 0;
         while(events.some(o => o !== ev && o.level === level &&
@@ -337,10 +368,12 @@
       let eventWidth = availableWidth / (maxLevel + 1);
       let leftPos = dayIndex * cellWidth + ev.level * eventWidth + 2;
 
-      // create the block
       const block = document.createElement("div");
       block.classList.add("event-block");
       block.classList.add(userTag === "ana" ? "ana-block" : "thomas-block");
+      if(userTag === "overlay") {
+        // Not applicable, each block gets its own user tag and color
+      }
       block.dataset.label = ev.label;
       block.dataset.day = dayIndex;
       block.dataset.startIdx = ev.startIdx;
@@ -355,17 +388,16 @@
       block.style.width = (eventWidth - 4) + "px";
       block.style.height = (duration * cellHeight - 4) + "px";
 
-      // Double-click to edit or delete
+      // Enable editing on double-click: change label or delete
       block.addEventListener("dblclick", () => {
         let newLabel = prompt("Enter new label (or type DELETE to remove):", block.dataset.label);
-        if (newLabel === null) return; // canceled
+        if (newLabel === null) return;
         if (newLabel.toLowerCase() === "delete") {
           block.remove();
           return;
         }
         block.dataset.label = newLabel;
-        // Optionally change color
-        let newColor = prompt("Enter new color in hex (#00d4ff) or leave blank:", "");
+        let newColor = prompt("Enter new color hex (#00d4ff) or leave blank:", "");
         if (newColor && /^#[0-9A-Fa-f]{6}$/.test(newColor)) {
           block.style.background = newColor;
         }
@@ -378,7 +410,7 @@
     }
 
     // ==============================
-    //  DRAG & RESIZE
+    //  DRAG & RESIZE FUNCTIONALITY
     // ==============================
     function enableDraggingAndResizing() {
       interact('.event-block')
@@ -410,7 +442,6 @@
           let target = event.target;
           let newHeight = event.rect.height;
           target.style.height = newHeight + "px";
-          // Snap
           let newDuration = Math.round(newHeight / cellHeight);
           target.dataset.duration = newDuration;
           let newStartIdx = parseInt(target.dataset.startIdx, 10);
@@ -418,7 +449,7 @@
           let curEnd = indexToTime(newStartIdx + newDuration);
           target.textContent = target.dataset.label + ` (${curStart} - ${curEnd})`;
         });
-      
+
       function dragMoveListener(event) {
         let target = event.target;
         let x = (parseFloat(target.getAttribute('data-x')) || 0) + event.dx;
@@ -450,44 +481,33 @@
     }
 
     // ==============================
-    //  SUMMARY
+    //  SUMMARY & REPORTS
     // ==============================
-    // Single-schedule summary
     function renderSummary(scheduleMatrix) {
       let summaryDiv = document.getElementById("summary");
-      summaryDiv.innerHTML = "";
       summaryDiv.innerHTML = "<h2>Activity Summary (Hours)</h2>";
-      
       let counts = calcActivityCounts(scheduleMatrix);
       let table = buildSummaryTable(counts);
       summaryDiv.appendChild(table);
     }
 
-    // Overlay-schedules summary
     function renderSummaryOverlay(ana, thomas) {
       let summaryDiv = document.getElementById("summary");
-      summaryDiv.innerHTML = "";
       summaryDiv.innerHTML = "<h2>Overlay Summary</h2>";
-
-      // We'll show separate activity counts for each schedule,
-      // plus a line for "Overlap hours" and "Free time" if you want to expand
       let anaCounts = calcActivityCounts(ana);
       let thomasCounts = calcActivityCounts(thomas);
-
       let anaTable = buildSummaryTable(anaCounts, "Ana");
       let thomasTable = buildSummaryTable(thomasCounts, "Thomas");
-      
       summaryDiv.appendChild(anaTable);
       summaryDiv.appendChild(thomasTable);
     }
 
-    // Build an object: { activityName: hourCount }
     function calcActivityCounts(scheduleMatrix) {
       let counts = {};
       days.forEach(day => {
         const arr = scheduleMatrix[day] || [];
         arr.forEach(entry => {
-          if (entry.label && entry.label.trim() && entry.label !== "Freespace") {
+          if (entry.label && entry.label.trim() !== "" && entry.label !== "Freespace") {
             entry.label.split(" + ").forEach(lbl => {
               lbl = lbl.trim();
               if (!lbl) return;
@@ -499,7 +519,6 @@
       return counts;
     }
 
-    // Build a summary table
     function buildSummaryTable(counts, title) {
       let table = document.createElement("table");
       let headerRow = document.createElement("tr");
@@ -510,7 +529,6 @@
       headerRow.appendChild(titleCell);
       headerRow.appendChild(hoursCell);
       table.appendChild(headerRow);
-
       let sortedActs = Object.keys(counts).sort();
       sortedActs.forEach(act => {
         let tr = document.createElement("tr");
@@ -547,3 +565,4 @@
   </script>
 </body>
 </html>
+
